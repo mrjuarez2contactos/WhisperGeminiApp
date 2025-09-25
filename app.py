@@ -140,6 +140,7 @@ with st.sidebar:
     task = st.selectbox("Tarea", ["transcribe", "translate"], index=0)
 
     st.markdown("### 🔐 Clave de API de Gemini")
+    # Se lee la clave desde los "Secrets" de Streamlit para mayor seguridad
     GOOGLE_API_KEY = st.secrets.get("GOOGLE_API_KEY", "")
     GEMINI_MODEL = st.text_input("Modelo Gemini", "gemini-1.5-flash")
 
@@ -214,8 +215,9 @@ with tab2:
                     st.text_area("Resumen Gemini", gem_sum or "No generado.", height=200)
 
                 # >>>>> CAMBIO CLAVE: PAUSA AUTOMÁTICA Y FIJA <<<<<
-                # Pausa de 15 segundos entre cada resumen para evitar saturar la API.
-                time.sleep(15)
+                if i < len(txt_files): # No pausar después del último archivo
+                    progress_placeholder.info(f"Pausa de 15 segundos para no saturar la API...")
+                    time.sleep(15)
 
             progress_placeholder.empty()
             st.success("¡Resúmenes generados!")
