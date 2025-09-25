@@ -103,8 +103,8 @@ with st.sidebar:
 
     st.markdown("### 🔐 Gemini 2.5")
     # En Streamlit Cloud, las claves se guardan de forma segura en los "Secrets"
-    GOOGLE_API_KEY = st.text_input("GOOGLE_API_KEY", type="password", value=st.secrets.get("GOOGLE_API_KEY", ""))
-    GEMINI_MODEL = st.text_input("Modelo Gemini", value="gemini-2.5-pro")
+    GOOGLE_API_KEY = st.secrets.get("GOOGLE_API_KEY", "")
+    GEMINI_MODEL = "gemini-2.5-pro"
 
     st.markdown("### 🧭 Contexto para Resúmenes")
     USER_CONTEXT = st.text_area(
