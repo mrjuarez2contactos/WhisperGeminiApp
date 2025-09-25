@@ -1,0 +1,7 @@
+streamlit
+faster-whisper
+torch
+google-generativeai
+openai
+tenacity
+imageio-ffmpeg
