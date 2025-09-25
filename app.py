@@ -181,7 +181,6 @@ with tab2:
         st.session_state.summary_idx = 0
         st.session_state.summaries = {}
         st.session_state.error_info = None
-        st.experimental_rerun() # Refrescar la UI después de resetear
 
     st.markdown("---")
 
@@ -195,7 +194,6 @@ with tab2:
         
         if st.button("He esperado. Reintentar Archivo Anterior"):
             st.session_state.error_info = None
-            st.experimental_rerun()
 
     # Si no estamos en pausa y aún quedan archivos
     elif idx < len(to_summarize):
@@ -217,7 +215,6 @@ with tab2:
                         st.error(f"Error inesperado con {next_file.name}: {e}")
                         st.session_state.summaries[next_file.name] = f"ERROR: {e}"
                         st.session_state.summary_idx += 1
-            st.experimental_rerun()
     
     # Si ya no quedan archivos
     else:
