@@ -2,6 +2,7 @@
 # Whisper + Gemini 1.5 con Streamlit
 # Versión final estable basada en el código original del usuario.
 # Incluye una pausa automática para evitar errores de cuota de la API.
+# Modelo de Gemini actualizado a una versión superior.
 
 import os
 import re
@@ -67,7 +68,7 @@ def convert_to_wav_if_needed(src_path: Path) -> Path:
     ffmpeg = _get_ffmpeg_path()
     dst = src_path.with_suffix(".wav")
     cmd = [ffmpeg, "-y", "-i", str(src_path), "-ac", "1", "-ar", "16000", str(dst)]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if proc.returncode != 0 or not dst.exists():
         msg = proc.stderr or proc.stdout or "ffmpeg error desconocido"
         raise RuntimeError(f"ffmpeg falló al convertir {src_path.name} -> WAV:\n{msg[:800]}")
@@ -140,9 +141,10 @@ with st.sidebar:
     task = st.selectbox("Tarea", ["transcribe", "translate"], index=0)
 
     st.markdown("### 🔐 Clave de API de Gemini")
-    # Se lee la clave desde los "Secrets" de Streamlit para mayor seguridad
+    # Se lee la clave desde los "Secrets" de Streamlit para mayor seguridad.
     GOOGLE_API_KEY = st.secrets.get("GOOGLE_API_KEY", "")
-    GEMINI_MODEL = st.text_input("Modelo Gemini", "gemini-1.5-flash")
+    # >>>>> CAMBIO CLAVE: MODELO ACTUALIZADO <<<<<
+    GEMINI_MODEL = st.text_input("Modelo Gemini", "gemini-2.5-pro")
 
     st.markdown("### 🧭 Contexto para Resúmenes")
     USER_CONTEXT = st.text_area(
@@ -214,7 +216,7 @@ with tab2:
                 with results_placeholder.expander(f"📄 Resultados para: {f.name}"):
                     st.text_area("Resumen Gemini", gem_sum or "No generado.", height=200)
 
-                # >>>>> CAMBIO CLAVE: PAUSA AUTOMÁTICA Y FIJA <<<<<
+                # >>>>> PAUSA AUTOMÁTICA Y FIJA <<<<<
                 if i < len(txt_files): # No pausar después del último archivo
                     progress_placeholder.info(f"Pausa de 15 segundos para no saturar la API...")
                     time.sleep(15)
