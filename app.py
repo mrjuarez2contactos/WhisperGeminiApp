@@ -1,6 +1,7 @@
 # app.py
-# Whisper + Gemini 2.5 (resúmenes) con Streamlit
-# Versión final estable con control manual, soporte AMR robusto y limpieza.
+# Whisper + Gemini 1.5 con Streamlit
+# Versión final estable basada en el código original del usuario.
+# Incluye una pausa automática para evitar errores de cuota de la API.
 
 import os
 import re
@@ -17,7 +18,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 # CONFIG INICIAL DE PÁGINA
 # =========================
 st.set_page_config(page_title="Whisper + Resúmenes", layout="wide")
-st.title("📞 Transcripción y Resumen de Audios (Control Manual)")
+st.title("📞 Transcripción y Resumen de Audios")
 
 # =========================
 # UTILIDADES DE ARCHIVOS
@@ -106,24 +107,22 @@ def transcribe_files(model, input_dir: Path, output_dir: Path, language: str, ta
     progress_placeholder.empty()
 
 # =========================
-# RESÚMENES (Gemini 2.5)
+# RESÚMENES (Gemini 1.5)
 # =========================
-def build_summary_prompt(user_context: str) -> str:
+def build_summary_prompt(user_context: str):
     return (
-        "Eres un asistente experto que resume llamadas telefónicas del año 2025 sobre la comercialización de mariscos. Tu resumen debe ser un único párrafo conciso y directo.\\n\\n"
-        "ENFOQUE PRINCIPAL: Extrae y resume ÚNICAMENTE los detalles comerciales clave.\\n\\n"
-        "REGLAS DE FORMATO ESTRICTAS:\\n"
-        "1. REGLA CRÍTICA: Escribe TODOS los nombres propios de personas con Mayúscula Inicial (Ej: 'Juan Pérez').\\n"
-        "2. OMITE por completo cualquier mención a 'Orador 1' o los nombres de los participantes.\\n"
-        "3. El resultado final debe ser un solo párrafo.\\n"
-        f"\\n[CONTEXTO DEL NEGOCIO]\\n{user_context.strip()}\\n"
-        "\\n[INSTRUCCIONES FINALES]\\nA continuación se te proporcionará la transcripción."
+        "Eres un asistente que resume llamadas comerciales sobre compra-venta de camarón, pulpo y tilapia.\\n"
+        "Objetivo: entregar un resumen útil para decisiones comerciales.\\n"
+        "- Conserva cifras, tamaños/tallas y acuerdos (precio, cantidad, fechas, flete, almacenamiento).\\n"
+        "- Convierte nombres propios a Mayúscula Inicial. No inventes datos.\\n"
+        f"\\n[Contexto del usuario]\\n{user_context}\\n"
+        "\\n[Instrucciones de formato]\\n"
+        "- Devuelve un único párrafo de 4–8 oraciones.\\n"
+        "- Inicia con un renglón 'Contacto: NOMBRE | Fecha: AAAA-MM-DD HH:MM' si está en el nombre del archivo o la transcripción.\\n"
     )
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-def summarize_with_gemini(api_key: str, model_name: str, user_context: str, transcript: str) -> str:
-    if not api_key:
-        raise RuntimeError("Falta GOOGLE_API_KEY en los Secrets de la aplicación.")
+def summarize_with_gemini(api_key, model_name, user_context, transcript):
     import google.generativeai as genai
     genai.configure(api_key=api_key)
     prompt = build_summary_prompt(user_context)
@@ -135,29 +134,23 @@ def summarize_with_gemini(api_key: str, model_name: str, user_context: str, tran
 # SIDEBAR (CONFIG)
 # =========================
 with st.sidebar:
-    st.markdown("### 🎙️ Whisper")
+    st.markdown("### 🎙️ Configuración de Whisper")
     model_name = st.selectbox("Modelo", ["tiny", "base", "small", "medium"], index=2)
     language = st.text_input("Idioma (ej. 'es', 'en')", "es")
     task = st.selectbox("Tarea", ["transcribe", "translate"], index=0)
 
-    st.markdown("### 🔐 Gemini 1.5")
+    st.markdown("### 🔐 Clave de API de Gemini")
     GOOGLE_API_KEY = st.secrets.get("GOOGLE_API_KEY", "")
     GEMINI_MODEL = st.text_input("Modelo Gemini", "gemini-1.5-flash")
 
     st.markdown("### 🧭 Contexto para Resúmenes")
     USER_CONTEXT = st.text_area(
         "Contexto de negocio",
-        value=(
-            "Me dedico a la compra venta de camarón, pulpo y pescado.\\n\\n"
-            "**CAMARÓN VIVO:** Talla por gramos (8-45g). Precio/kg = gramos + 100.\\n"
-            "**CAMARÓN CONGELADO:** Tallas 16/20, 21/25, etc. (unidades/libra).\\n"
-            "**PULPO:** Tallas 1/2, 2/4 (unidades/libra).\\n"
-            "**TILAPIA:** Tallas 3/5, 5/7 (onzas/filete) con % de agua."
-        ),
-        height=200
+        "Me dedico a la compra-venta de camarón, pulpo y filete de tilapia...",
+        height=150
     )
 
-# La carpeta de salida ahora es temporal dentro de la sesión de Streamlit
+# Carpeta de salida relativa
 OUTPUT_DIR = Path("transcripciones_output")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
@@ -167,100 +160,71 @@ st.sidebar.info(f"Whisper listo en `{device}` ({compute_type})")
 # =========================
 # UI PRINCIPAL (TABS)
 # =========================
-tab1, tab2, tab3 = st.tabs([
-    "1) Transcribir Audios",
-    "2) Generar Resúmenes",
-    "3) Descargar / Limpiar"
-])
+tab1, tab2, tab3 = st.tabs(["1) Transcribir Audios", "2) Generar Resúmenes", "3) Descargar Resultados"])
 
-# ---------- TAB 1: Transcribir ----------
 with tab1:
     st.header("Sube tus archivos de audio")
     uploaded_files = st.file_uploader(
         "Selecciona uno o más archivos de audio",
-        type=['amr', 'mp3', 'mp4', 'wav', 'm4a', 'ogg', 'flac'],
         accept_multiple_files=True
     )
 
     if st.button("▶️ Iniciar Transcripción", disabled=not uploaded_files):
         with tempfile.TemporaryDirectory() as tmpdir:
             input_dir = Path(tmpdir)
-            for f in uploaded_files:
-                (input_dir / f.name).write_bytes(f.getbuffer())
-            with st.spinner("Procesando..."):
+            for uf in uploaded_files or []:
+                p = input_dir / uf.name
+                p.write_bytes(uf.getbuffer())
+            
+            with st.spinner("Procesando... esto puede tardar varios minutos."):
                 transcribe_files(model, input_dir, OUTPUT_DIR, language, task)
-        st.success("¡Transcripción completada!")
+            st.success("¡Transcripción completada!")
+            st.balloons()
 
-# ---------- TAB 2: Resumir (solo nuevos) ----------
 with tab2:
-    st.header("Genera resúmenes (Control Manual Estable)")
-    gem_dir = OUTPUT_DIR / "_geminis"
-    gem_dir.mkdir(exist_ok=True)
-
-    if 'summary_idx' not in st.session_state: st.session_state.summary_idx = 0
-    if 'summaries' not in st.session_state: st.session_state.summaries = {}
-    if 'error_info' not in st.session_state: st.session_state.error_info = None
-        
-    all_transcripts = sorted(OUTPUT_DIR.glob("*.txt"))
-    existing_summary_stems = {p.stem for p in gem_dir.glob("*.txt")}
-    to_summarize = [p for p in all_transcripts if p.stem not in existing_summary_stems]
-    
-    st.write(f"Transcripciones listas para resumir: **{len(to_summarize)}**")
-    
-    if st.button("Resetear Proceso"):
-        st.session_state.summary_idx = 0
-        st.session_state.summaries = {}
-        st.session_state.error_info = None
-
-    st.markdown("---")
-
-    idx = st.session_state.summary_idx
-    
-    if st.session_state.error_info and idx < len(to_summarize):
-        failed_file_name = to_summarize[idx].name
-        st.error(f"Pausa por error de cuota en: **{failed_file_name}**")
-        st.warning("⏳ Por favor, espere un minuto para que la cuota de la API se recupere.")
-        
-        if st.button("He esperado. Reintentar Archivo Anterior"):
-            st.session_state.error_info = None
-
-    elif idx < len(to_summarize):
-        next_file = to_summarize[idx]
-        st.info(f"Siguiente archivo a procesar ({idx + 1}/{len(to_summarize)}): **{next_file.name}**")
-
-        if st.button("▶️ Resumir Siguiente Archivo"):
-            if not GOOGLE_API_KEY:
-                st.warning("Falta la GOOGLE_API_KEY en los Secrets de la aplicación.")
-            else:
-                with st.spinner(f"Resumiendo {next_file.name}..."):
-                    try:
-                        transcript = read_text_file(next_file, max_chars=120_000)
-                        gem_sum = summarize_with_gemini(GOOGLE_API_KEY, GEMINI_MODEL, USER_CONTEXT, transcript)
-                        st.session_state.summaries[next_file.name] = gem_sum
-                        (gem_dir / (next_file.stem + ".txt")).write_text(gem_sum, encoding="utf-8")
-                        st.session_state.summary_idx += 1
-                    except Exception as e:
-                        if "ResourceExhausted" in str(e) or "429" in str(e):
-                            st.session_state.error_info = str(e)
-                        else:
-                            st.error(f"Error inesperado con {next_file.name}: {e}")
-                            st.session_state.summaries[next_file.name] = f"ERROR: {e}"
-                            st.session_state.summary_idx += 1
-    
+    st.header("Genera resúmenes de las transcripciones")
+    txt_files = sorted(OUTPUT_DIR.glob("*.txt"))
+    if not txt_files:
+        st.info("Aún no hay transcripciones. Sube y transcribe archivos en la Pestaña 1.")
     else:
-        if to_summarize: st.success("🎉 ¡Todos los archivos han sido procesados! 🎉")
+        st.write(f"Se encontraron **{len(txt_files)}** transcripciones listas para resumir.")
 
-    if st.session_state.summaries:
-        st.markdown("---")
-        st.subheader("Resúmenes Generados en esta Sesión")
-        for fname, summary in reversed(list(st.session_state.summaries.items())):
-            with st.expander(f"📄 {fname}"):
-                st.text_area("Resumen", summary or "No generado.", height=220, key=f"summary_{fname}")
+    if st.button("▶️ Generar Resúmenes", disabled=not txt_files):
+        if not GOOGLE_API_KEY:
+            st.error("Por favor, introduce tu GOOGLE_API_KEY en los 'Secrets' de la aplicación.")
+        else:
+            gem_dir = OUTPUT_DIR / "_geminis"
+            gem_dir.mkdir(exist_ok=True)
+            progress_placeholder = st.empty()
+            results_placeholder = st.container()
 
-# ---------- TAB 3: ZIP + Limpieza ----------
+            for i, f in enumerate(txt_files, 1):
+                progress_text = f"Resumiendo: {f.name} ({i}/{len(txt_files)})"
+                progress_placeholder.progress(i / len(txt_files), text=progress_text)
+                
+                gem_sum = ""
+                try:
+                    transcript = read_text_file(f, max_chars=100000)
+                    gem_sum = summarize_with_gemini(GOOGLE_API_KEY, GEMINI_MODEL, USER_CONTEXT, transcript)
+                    write_text_file(gem_dir / f.name, gem_sum)
+                except Exception as e:
+                    st.error(f"Error con Gemini en {f.name}: {e}")
+
+                with results_placeholder.expander(f"📄 Resultados para: {f.name}"):
+                    st.text_area("Resumen Gemini", gem_sum or "No generado.", height=200)
+
+                # >>>>> CAMBIO CLAVE: PAUSA AUTOMÁTICA Y FIJA <<<<<
+                # Pausa de 15 segundos entre cada resumen para evitar saturar la API.
+                time.sleep(15)
+
+            progress_placeholder.empty()
+            st.success("¡Resúmenes generados!")
+
 with tab3:
-    st.header("Descargar resultados y limpiar")
-    if st.button("📦 Preparar ZIP para Descargar"):
+    st.header("Descarga todos tus archivos")
+    st.write("Haz clic para crear un `.zip` con todas las transcripciones y resúmenes.")
+
+    if st.button("📦 Preparar Archivo .ZIP"):
         zip_path = Path("resultados.zip")
         with zipfile.ZipFile(zip_path, 'w') as zipf:
             files_to_zip = list(OUTPUT_DIR.rglob("*"))
@@ -270,25 +234,11 @@ with tab3:
                 for file_path in files_to_zip:
                     if file_path.is_file():
                         zipf.write(file_path, arcname=file_path.relative_to(OUTPUT_DIR))
-                
                 with open(zip_path, "rb") as f:
-                    st.download_button("⬇️ Descargar resultados.zip", f, "resultados.zip", "application/zip")
-                
-                st.success("ZIP listo.")
-
-    st.divider()
-    st.subheader("🧹 Limpieza Manual")
-    if st.button("🗑️ Borrar TODOS los archivos (Transcripciones y Resúmenes)"):
-        count = 0
-        for p in OUTPUT_DIR.rglob("*"):
-            if p.is_file():
-                try:
-                    p.unlink()
-                    count += 1
-                except:
-                    pass
-        st.success(f"Se eliminaron {count} archivos. La aplicación está limpia.")
-        st.session_state.summary_idx = 0
-        st.session_state.summaries = {}
-        st.session_state.error_info = None
+                    st.download_button(
+                        label="⬇️ Descargar resultados.zip",
+                        data=f,
+                        file_name="resultados.zip",
+                        mime="application/zip"
+                    )
 
